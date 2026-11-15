@@ -18,18 +18,26 @@
 #define TEST_MODE 1
 
 #if TEST_MODE
-const unsigned long LOAD_WAIT       = 6000;    // "Load" to "Attention"
+const unsigned long LOAD_WAIT       = 6000;    // "Load" to "Attention" (default)
+const unsigned long LOAD_WAIT_MIN   = 1000;    // Shortest the RO can set it to
+const unsigned long LOAD_WAIT_STEP  = 1000;    // Up/Down step when adjusting
 const unsigned long PRECISION_FACE  = 3000;    // Precision stage face time
 const unsigned long SERIES_150_FACE = 5000;    // 150 Seconds Series face time
 const unsigned long SERIES_20_FACE  = 2000;    // 20 Seconds Series face time
 const unsigned long TP1_P1_FACE     = 5000;    // T&P1 Practice 1 face time
 #else
-const unsigned long LOAD_WAIT       = 60000;   // 60 seconds
+const unsigned long LOAD_WAIT       = 60000;   // 60 seconds (default)
+const unsigned long LOAD_WAIT_MIN   = 10000;   // Shortest the RO can set it to
+const unsigned long LOAD_WAIT_STEP  = 10000;   // Up/Down step when adjusting
 const unsigned long PRECISION_FACE  = 300000;  // 300 seconds
 const unsigned long SERIES_150_FACE = 150000;  // 150 seconds
 const unsigned long SERIES_20_FACE  = 20000;   // 20 seconds
 const unsigned long TP1_P1_FACE     = 120000;  // 2 minutes
 #endif
+
+// The load wait the Range Officer has chosen (Load Wait menu item).
+// Starts at the default every power-up and can be shortened, never lengthened.
+unsigned long loadWait = LOAD_WAIT;
 
 // These timings are short already, so they are the same in both modes
 const unsigned long EDGE_TIME       = 7000;    // Edge before face, and Unload before face
@@ -336,8 +344,17 @@ void updateMenu() {
       lcd.setCursor(0, 1);
       lcd.print(">Reset Counters");
       break;
-    case 15:
-      menu = 14;
+    case 15: {
+      char line[17];
+      snprintf(line, sizeof(line), ">Load Wait %lus", loadWait / 1000);
+      lcd.clear();
+      lcd.print(" Reset Counters");
+      lcd.setCursor(0, 1);
+      lcd.print(line);
+      break;
+    }
+    case 16:
+      menu = 15;
       break;
   }
 }
@@ -385,6 +402,9 @@ void executeAction() {
       break;
     case 14:
       resetCounters();
+      break;
+    case 15:
+      adjustLoadWait();
       break;
   }
 }
@@ -440,6 +460,42 @@ void resetCounters() { //Menu item: Reset Counters
   delay(2000);
 }
 
+/*  Menu item: Load Wait (Note 1 in the sequence documents).
+ *  Up/Down change the wait between LOAD_WAIT_MIN and the default, Select saves it.
+ */
+void showLoadWait() {
+  char line[17];
+  snprintf(line, sizeof(line), "%3lus  SEL=Save", loadWait / 1000);
+  show("Load Wait U/D", line);
+}
+
+void adjustLoadWait() {
+  while (!digitalRead(selectButton)); //Wait for the Select press that opened this to finish
+  delay(50);
+  showLoadWait();
+  while (true) {
+    if (!digitalRead(upButton)) {
+      if (loadWait + LOAD_WAIT_STEP <= LOAD_WAIT) loadWait += LOAD_WAIT_STEP;
+      showLoadWait();
+      delay(50);
+      while (!digitalRead(upButton));
+    }
+    if (!digitalRead(downButton)) {
+      if (loadWait >= LOAD_WAIT_MIN + LOAD_WAIT_STEP) loadWait -= LOAD_WAIT_STEP;
+      showLoadWait();
+      delay(50);
+      while (!digitalRead(downButton));
+    }
+    if (!digitalRead(selectButton)) {
+      char line[17];
+      snprintf(line, sizeof(line), "set to %lus", loadWait / 1000);
+      show("Load Wait", line);
+      delay(1500);
+      return;
+    }
+  }
+}
+
 /*  Face for faceTime. If stoppable, the LCD counts down the seconds left and
  *  pressing Select ends the face early (Note 2 in the sequence documents).
  */
@@ -486,7 +542,7 @@ void timedSeries(int loadTrack, const char* name, SeriesCounter& count,
 
   player.play(loadTrack);
   show(name, loadLine);
-  delay(LOAD_WAIT);
+  delay(loadWait);
   player.play(TRACK_ATTENTION);
   edge();
   show(label, "Attention");
@@ -566,7 +622,7 @@ void action2() { //Rapid Fire Stage
   snprintf(loadLine, sizeof(loadLine), "%s Load", label);
   player.play(8);
   show("Rapid Fire Stage", loadLine);
-  delay(LOAD_WAIT);
+  delay(loadWait);
   player.play(TRACK_ATTENTION);
 
   // 5 cycles of EDGE for 7 secs then FACE for 3 secs
