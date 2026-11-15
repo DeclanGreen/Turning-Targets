@@ -59,6 +59,9 @@ const int TRACK_ATTENTION = 2;
  *  After the last series the counter goes back to the start.
  */
 struct SeriesCounter { int next; int first; int last; };
+
+// Text kept in flash with F("...") instead of RAM
+typedef const __FlashStringHelper* FText;
 SeriesCounter precisionCount = {0, 0, 6}; // Sighter + 6 competition series
 SeriesCounter rapidCount     = {0, 0, 6}; // Sighter + 6 competition series
 SeriesCounter s150Count      = {0, 0, 4}; // Sighter + 4 series
@@ -96,14 +99,14 @@ void setup() {
 
   // Start communication with DFPlayer Mini
   if (player.begin(softwareSerial)) {
-   Serial.println("OK");
+   Serial.println(F("OK"));
 
     // Set volume to maximum (0 to 30).
     player.volume(30);
     // Play MP3 file on the SD card
     player.play(19); //Plays DRC Initializing System - Please Wait
   } else {
-    Serial.println("Connecting to DFPlayer Mini failed!");
+    Serial.println(F("Connecting to DFPlayer Mini failed!"));
   }
 
 
@@ -221,13 +224,13 @@ void setup() {
 //Print the Welcome Screen
   lcd.clear();
   lcd.setCursor(0,0);
-  lcd.print("      DRC");
+  lcd.print(F("      DRC"));
   lcd.setCursor(0,1);
-  lcd.print("Turning  Targets");
+  lcd.print(F("Turning  Targets"));
 #if TEST_MODE
   lcd.setCursor(0,2);
-  lcd.print("   TEST MODE");
-  Serial.println("TEST MODE - short timings");
+  lcd.print(F("   TEST MODE"));
+  Serial.println(F("TEST MODE - short timings"));
 #endif
   digitalWrite(Relay_1, LOW); //Ensures Relay Back to Off
   delay(2000); //2 Sec delay
@@ -262,93 +265,93 @@ void updateMenu() {
       break;
     case 1:
       lcd.clear();
-      lcd.print(">Precision Stage");
+      lcd.print(F(">Precision Stage"));
       lcd.setCursor(0, 1);
-      lcd.print(" Rapid Fire");
+      lcd.print(F(" Rapid Fire"));
       break;
     case 2:
       lcd.clear();
-      lcd.print(" Precision Stage");
+      lcd.print(F(" Precision Stage"));
       lcd.setCursor(0, 1);
-      lcd.print(">Rapid Fire");
+      lcd.print(F(">Rapid Fire"));
       break;
     case 3:
       lcd.clear();
-      lcd.print(">150 Sec Series");
+      lcd.print(F(">150 Sec Series"));
       lcd.setCursor(0, 1);
-      lcd.print(" 20 Sec Series");
+      lcd.print(F(" 20 Sec Series"));
       break;
     case 4:
       lcd.clear();
-      lcd.print(" 150 Sec Series");
+      lcd.print(F(" 150 Sec Series"));
       lcd.setCursor(0, 1);
-      lcd.print(">20 Sec Series");
+      lcd.print(F(">20 Sec Series"));
       break;
     case 5:
       lcd.clear();
-      lcd.print(" 20 Sec Series");
+      lcd.print(F(" 20 Sec Series"));
       lcd.setCursor(0, 1);
-      lcd.print(">10 Sec Series");
+      lcd.print(F(">10 Sec Series"));
       break;
     case 6:
       lcd.clear();
-      lcd.print(">T&P1 Practice 1");
+      lcd.print(F(">T&P1 Practice 1"));
       lcd.setCursor(0, 1);
-      lcd.print(" T&P1 Practice 2");
+      lcd.print(F(" T&P1 Practice 2"));
       break;
     case 7:
       lcd.clear();
-      lcd.print(" T&P1 Practice 1");
+      lcd.print(F(" T&P1 Practice 1"));
       lcd.setCursor(0, 1);
-      lcd.print(">T&P1 Practice 2");
+      lcd.print(F(">T&P1 Practice 2"));
       break;
     case 8:
       lcd.clear();
-      lcd.print(">T&P1 Practice 3");
+      lcd.print(F(">T&P1 Practice 3"));
       lcd.setCursor(0, 1);
-      lcd.print(" Multi-Target P1");
+      lcd.print(F(" Multi-Target P1"));
       break;
     case 9:
       lcd.clear();
-      lcd.print(" T&P1 Practice 3");
+      lcd.print(F(" T&P1 Practice 3"));
       lcd.setCursor(0, 1);
-      lcd.print(">Multi-Target P1");
+      lcd.print(F(">Multi-Target P1"));
       break;
     case 10:
       lcd.clear();
-      lcd.print(">Multi-Target P2");
+      lcd.print(F(">Multi-Target P2"));
       lcd.setCursor(0, 1);
-      lcd.print(" Multi-Target P3");
+      lcd.print(F(" Multi-Target P3"));
       break;
     case 11:
       lcd.clear();
-      lcd.print(" Multi-Target P2");
+      lcd.print(F(" Multi-Target P2"));
       lcd.setCursor(0, 1);
-      lcd.print(">Multi-Target P3");
+      lcd.print(F(">Multi-Target P3"));
       break;
     case 12:
       lcd.clear();
-      lcd.print(">Multi-Target P4");
+      lcd.print(F(">Multi-Target P4"));
       lcd.setCursor(0, 1);
-      lcd.print(" About");
+      lcd.print(F(" About"));
       break;
     case 13:
       lcd.clear();
-      lcd.print(">About");
+      lcd.print(F(">About"));
       lcd.setCursor(0, 1);
-      lcd.print(" Reset Counters");
+      lcd.print(F(" Reset Counters"));
       break;
     case 14:
       lcd.clear();
-      lcd.print(" About");
+      lcd.print(F(" About"));
       lcd.setCursor(0, 1);
-      lcd.print(">Reset Counters");
+      lcd.print(F(">Reset Counters"));
       break;
     case 15: {
       char line[17];
-      snprintf(line, sizeof(line), ">Load Wait %lus", loadWait / 1000);
+      snprintf_P(line, sizeof(line), PSTR(">Load Wait %lus"), loadWait / 1000);
       lcd.clear();
-      lcd.print(" Reset Counters");
+      lcd.print(F(" Reset Counters"));
       lcd.setCursor(0, 1);
       lcd.print(line);
       break;
@@ -415,7 +418,24 @@ void executeAction() {
 void edge() { digitalWrite(Relay_1, HIGH); } //Turn targets to EDGE
 void face() { digitalWrite(Relay_1, LOW); }  //Turn targets to FACE
 
-void show(const char* line1, const char* line2) { //Two lines on the LCD
+/*  Two lines on the LCD. Fixed text is passed as F("...") so it stays in
+ *  flash and doesn't use RAM; text built at run time is a char buffer.
+ */
+void show(FText line1, FText line2) {
+  lcd.clear();
+  lcd.print(line1);
+  lcd.setCursor(0,1);
+  lcd.print(line2);
+}
+
+void show(FText line1, const char* line2) {
+  lcd.clear();
+  lcd.print(line1);
+  lcd.setCursor(0,1);
+  lcd.print(line2);
+}
+
+void show(const char* line1, FText line2) {
   lcd.clear();
   lcd.print(line1);
   lcd.setCursor(0,1);
@@ -423,7 +443,7 @@ void show(const char* line1, const char* line2) { //Two lines on the LCD
 }
 
 void returnToMenu() {
-  show("  Returning to", "   Main Menu!");
+  show(F("  Returning to"), F("   Main Menu!"));
   delay(5000);
 }
 
@@ -433,9 +453,9 @@ void returnToMenu() {
 // Writes "Sighter" or e.g. "Series 3/6" into buf (at least 17 chars)
 void seriesLabel(char* buf, const SeriesCounter& c) {
   if (c.next == 0) {
-    strcpy(buf, "Sighter");
+    strcpy_P(buf, PSTR("Sighter"));
   } else {
-    snprintf(buf, 17, "Series %d/%d", c.next, c.last);
+    snprintf_P(buf, 17, PSTR("Series %d/%d"), c.next, c.last);
   }
 }
 
@@ -443,7 +463,7 @@ void seriesLabel(char* buf, const SeriesCounter& c) {
 void nextSeries(SeriesCounter& c) {
   if (c.next >= c.last) {
     c.next = c.first;
-    show("All series done", "Counter reset");
+    show(F("All series done"), F("Counter reset"));
     delay(3000);
   } else {
     c.next++;
@@ -456,7 +476,7 @@ void resetCounters() { //Menu item: Reset Counters
   s150Count.next = s150Count.first;
   s20Count.next = s20Count.first;
   s10Count.next = s10Count.first;
-  show("Series counters", "reset");
+  show(F("Series counters"), F("reset"));
   delay(2000);
 }
 
@@ -465,8 +485,8 @@ void resetCounters() { //Menu item: Reset Counters
  */
 void showLoadWait() {
   char line[17];
-  snprintf(line, sizeof(line), "%3lus  SEL=Save", loadWait / 1000);
-  show("Load Wait U/D", line);
+  snprintf_P(line, sizeof(line), PSTR("%3lus  SEL=Save"), loadWait / 1000);
+  show(F("Load Wait U/D"), line);
 }
 
 void adjustLoadWait() {
@@ -488,8 +508,8 @@ void adjustLoadWait() {
     }
     if (!digitalRead(selectButton)) {
       char line[17];
-      snprintf(line, sizeof(line), "set to %lus", loadWait / 1000);
-      show("Load Wait", line);
+      snprintf_P(line, sizeof(line), PSTR("set to %lus"), loadWait / 1000);
+      show(F("Load Wait"), line);
       delay(1500);
       return;
     }
@@ -513,14 +533,14 @@ void faceWait(unsigned long faceTime, bool stoppable) {
     if (left != shown) { //Update the countdown once a second
       shown = left;
       char line[17];
-      snprintf(line, sizeof(line), "Face %3ld SEL=End", left);
+      snprintf_P(line, sizeof(line), PSTR("Face %3ld SEL=End"), left);
       lcd.setCursor(0,1);
       lcd.print(line);
     }
     bool down = !digitalRead(selectButton);
     if (down && !wasDown) {
       lcd.setCursor(0,1);
-      lcd.print("Stopped early   ");
+      lcd.print(F("Stopped early   "));
       return;
     }
     wasDown = down;
@@ -533,44 +553,44 @@ void faceWait(unsigned long faceTime, bool stoppable) {
  *  -> faceTime -> EDGE + Announce UNLOAD -> 7 secs -> FACE
  *  The LCD shows which series this is, e.g. "Series 3/6".
  */
-void timedSeries(int loadTrack, const char* name, SeriesCounter& count,
+void timedSeries(int loadTrack, FText name, SeriesCounter& count,
                  unsigned long faceTime, bool stoppable) {
   char label[17];
   seriesLabel(label, count);
   char loadLine[17];
-  snprintf(loadLine, sizeof(loadLine), "%s Load", label);
+  snprintf_P(loadLine, sizeof(loadLine), PSTR("%s Load"), label);
 
   player.play(loadTrack);
   show(name, loadLine);
   delay(loadWait);
   player.play(TRACK_ATTENTION);
   edge();
-  show(label, "Attention");
+  show(label, F("Attention"));
   delay(EDGE_TIME);
   face();
-  show(label, "Face");
+  show(label, F("Face"));
   faceWait(faceTime, stoppable);
   edge();
   player.play(TRACK_UNLOAD);
-  show(label, "Unload");
+  show(label, F("Unload"));
   delay(EDGE_TIME);
   face();
-  show(label, "Complete");
+  show(label, F("Complete"));
   delay(3000);
   nextSeries(count);
 }
 
 /*  One exposure: EDGE -> 7 secs -> FACE for faceTime -> EDGE -> 7 secs -> FACE
  */
-void exposure(const char* name, unsigned long faceTime) {
-  show("Commencing", name);
+void exposure(FText name, unsigned long faceTime) {
+  show(F("Commencing"), name);
   edge();
   delay(EDGE_TIME);
   face();
-  show(name, "Face");
+  show(name, F("Face"));
   delay(faceTime);
   edge();
-  show(name, "Edge");
+  show(name, F("Edge"));
   delay(EDGE_TIME);
   face();
 }
@@ -578,15 +598,15 @@ void exposure(const char* name, unsigned long faceTime) {
 /*  Repeated appearances: EDGE, then each appearance is FACE for faceTime
  *  followed by EDGE for edgeTime. Ends on FACE.
  */
-void appearances(const char* name, int count, unsigned long faceTime, unsigned long edgeTime) {
-  show("Commencing", name);
+void appearances(FText name, int count, unsigned long faceTime, unsigned long edgeTime) {
+  show(F("Commencing"), name);
   edge();
   delay(edgeTime);
   for (int i = 1; i <= count; i++) {
     lcd.clear();
     lcd.print(name);
     lcd.setCursor(0,1);
-    lcd.print("Appearance ");
+    lcd.print(F("Appearance "));
     lcd.print(i);
     face();
     delay(faceTime);
@@ -610,7 +630,7 @@ void appearances(const char* name, int count, unsigned long faceTime, unsigned l
 
 void action1() { //Precision Stage
   digitalWrite(9, HIGH); // Turn LED 9 on
-  timedSeries(7, "Precision Stage", precisionCount, PRECISION_FACE, true);
+  timedSeries(7, F("Precision Stage"), precisionCount, PRECISION_FACE, true);
   digitalWrite(9, LOW); // Turn LED 9 off
 }
 
@@ -619,9 +639,9 @@ void action2() { //Rapid Fire Stage
   char label[17];
   seriesLabel(label, rapidCount);
   char loadLine[17];
-  snprintf(loadLine, sizeof(loadLine), "%s Load", label);
+  snprintf_P(loadLine, sizeof(loadLine), PSTR("%s Load"), label);
   player.play(8);
-  show("Rapid Fire Stage", loadLine);
+  show(F("Rapid Fire Stage"), loadLine);
   delay(loadWait);
   player.play(TRACK_ATTENTION);
 
@@ -629,24 +649,24 @@ void action2() { //Rapid Fire Stage
   for (int cycle = 1; cycle <= 5; cycle++) {
     edge();
     char line[17];
-    snprintf(line, sizeof(line), "%s Cyc %d", label, cycle); // e.g. "Series 3/6 Cyc 2"
+    snprintf_P(line, sizeof(line), PSTR("%s Cyc %d"), label, cycle); // e.g. "Series 3/6 Cyc 2"
     lcd.clear();
     lcd.print(line);
     lcd.setCursor(0,1);
-    lcd.print("Edge for 7 Secs");
+    lcd.print(F("Edge for 7 Secs"));
     delay(EDGE_TIME);
     face();
     lcd.setCursor(0,1);
-    lcd.print("Face for 3 Secs");
+    lcd.print(F("Face for 3 Secs"));
     delay(RAPID_FACE);
   }
 
   edge(); //EDGE and Unload together
   player.play(TRACK_UNLOAD);
-  show(label, "Unload");
+  show(label, F("Unload"));
   delay(EDGE_TIME);
   face();
-  show(label, "Complete");
+  show(label, F("Complete"));
   delay(3000);
   nextSeries(rapidCount);
   returnToMenu();
@@ -655,77 +675,77 @@ void action2() { //Rapid Fire Stage
 
 void action3() { //150 Seconds Series
   digitalWrite(6, HIGH); // Turn LED 6 on
-  timedSeries(5, "150 Sec Series", s150Count, SERIES_150_FACE, true);
+  timedSeries(5, F("150 Sec Series"), s150Count, SERIES_150_FACE, true);
   returnToMenu();
   digitalWrite(6, LOW); // Turn the LED OFF
 }
 
 void action4() { //20 Seconds Series
   digitalWrite(8, HIGH); // Turn the Corresponding LED on
-  timedSeries(4, "20 Sec Series", s20Count, SERIES_20_FACE, false);
+  timedSeries(4, F("20 Sec Series"), s20Count, SERIES_20_FACE, false);
   returnToMenu();
   digitalWrite(8, LOW); // Turn the Corresponding LED off
 }
 
 void action5() { //10 Seconds series
   digitalWrite(4, HIGH); // Turn the LED on
-  timedSeries(3, "10 Sec Series", s10Count, SERIES_10_FACE, false);
+  timedSeries(3, F("10 Sec Series"), s10Count, SERIES_10_FACE, false);
   returnToMenu();
   digitalWrite(4, LOW); // Turn the Corresponding LED off
 }
 
 void action6() { //T&P1 Practice 1 - 12 shots in 2 minutes
   digitalWrite(9, HIGH); // Turn LED 9 on
-  exposure("T&P1 Practice 1", TP1_P1_FACE);
+  exposure(F("T&P1 Practice 1"), TP1_P1_FACE);
   returnToMenu();
   digitalWrite(9, LOW); // Turn LED 9 off
 }
 
 void action7() { //T&P1 Practice 2 - 6 appearances of 2 secs, 5 sec intervals
   digitalWrite(9, HIGH); // Turn LED 9 on
-  appearances("T&P1 Practice 2", 6, TP1_P2_FACE, APPEAR_EDGE);
+  appearances(F("T&P1 Practice 2"), 6, TP1_P2_FACE, APPEAR_EDGE);
   returnToMenu();
   digitalWrite(9, LOW); // Turn LED 9 off
 }
 
 void action8() { //T&P1 Practice 3 - 3 appearances of 3 secs, 5 sec intervals
   digitalWrite(9, HIGH); // Turn LED 9 on
-  appearances("T&P1 Practice 3", 3, APPEAR_3S_FACE, APPEAR_EDGE);
+  appearances(F("T&P1 Practice 3"), 3, APPEAR_3S_FACE, APPEAR_EDGE);
   returnToMenu();
   digitalWrite(9, LOW); // Turn LED 9 off
 }
 
 void action9() { //Multi-Target Practice 1 - 6 shots in 15 secs
   digitalWrite(9, HIGH); // Turn LED 9 on
-  exposure("Multi-Target P1", MT_P1_FACE);
+  exposure(F("Multi-Target P1"), MT_P1_FACE);
   returnToMenu();
   digitalWrite(9, LOW); // Turn LED 9 off
 }
 
 void action10() { //Multi-Target Practice 2 - 3 shots each target in 10 secs
   digitalWrite(9, HIGH); // Turn LED 9 on
-  exposure("Multi-Target P2", MT_P2_FACE);
+  exposure(F("Multi-Target P2"), MT_P2_FACE);
   returnToMenu();
   digitalWrite(9, LOW); // Turn LED 9 off
 }
 
 void action11() { //Multi-Target Practice 3 - 3 appearances of 3 secs, 5 sec intervals
   digitalWrite(9, HIGH); // Turn LED 9 on
-  appearances("Multi-Target P3", 3, APPEAR_3S_FACE, APPEAR_EDGE);
+  appearances(F("Multi-Target P3"), 3, APPEAR_3S_FACE, APPEAR_EDGE);
   returnToMenu();
   digitalWrite(9, LOW); // Turn LED 9 off
 }
 
 void action12() { //Multi-Target Practice 4 - 3 shots each target in 8 secs
   digitalWrite(9, HIGH); // Turn LED 9 on
-  exposure("Multi-Target P4", MT_P4_FACE);
+  exposure(F("Multi-Target P4"), MT_P4_FACE);
   returnToMenu();
   digitalWrite(9, LOW); // Turn LED 9 off
 }
 
 void action13() { //
   player.play(16);  //Sg Gnr Hartman Any Fecking Time Sweetheart
-  show("Programmed by", "Declan Green '22");
+  show(F("Programmed by"), F("Declan Green '22"));
   delay(10000);
 
 }
