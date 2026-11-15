@@ -1,6 +1,6 @@
 /*  This code is copyright
  *  Declan Green 07/03/2020
- *  Turning Targets v0.3
+ *  Turning Targets v0.4
  *  BN: Arduino Uno
  *  VID: 2341
  *  PID: 0043
@@ -45,6 +45,17 @@ const unsigned long MT_P4_FACE      = 8000;    // Multi-Target Practice 4
 // MP3 tracks on the SD card
 const int TRACK_UNLOAD    = 1;
 const int TRACK_ATTENTION = 2;
+
+/*  Series counters, so the Range Officer knows where they are in the programme.
+ *  next = the series that runs next time the stage is selected (0 = Sighter).
+ *  After the last series the counter goes back to the start.
+ */
+struct SeriesCounter { int next; int first; int last; };
+SeriesCounter precisionCount = {0, 0, 6}; // Sighter + 6 competition series
+SeriesCounter rapidCount     = {0, 0, 6}; // Sighter + 6 competition series
+SeriesCounter s150Count      = {0, 0, 4}; // Sighter + 4 series
+SeriesCounter s20Count       = {1, 1, 4}; // 4 series
+SeriesCounter s10Count       = {1, 1, 4}; // 4 series
 
 LiquidCrystal_I2C lcd(0x27,20,4); //Set the LCD address to 0x27
 
@@ -315,12 +326,18 @@ void updateMenu() {
       break;
     case 13:
       lcd.clear();
-      lcd.print(" Multi-Target P4");
-      lcd.setCursor(0, 1);
       lcd.print(">About");
+      lcd.setCursor(0, 1);
+      lcd.print(" Reset Counters");
       break;
     case 14:
-      menu = 13;
+      lcd.clear();
+      lcd.print(" About");
+      lcd.setCursor(0, 1);
+      lcd.print(">Reset Counters");
+      break;
+    case 15:
+      menu = 14;
       break;
   }
 }
@@ -366,6 +383,9 @@ void executeAction() {
     case 13:
       action13();
       break;
+    case 14:
+      resetCounters();
+      break;
   }
 }
 
@@ -387,28 +407,101 @@ void returnToMenu() {
   delay(5000);
 }
 
+/*  Series counter helpers
+ */
+
+// Writes "Sighter" or e.g. "Series 3/6" into buf (at least 17 chars)
+void seriesLabel(char* buf, const SeriesCounter& c) {
+  if (c.next == 0) {
+    strcpy(buf, "Sighter");
+  } else {
+    snprintf(buf, 17, "Series %d/%d", c.next, c.last);
+  }
+}
+
+// Moves the counter on. After the last series it goes back to the start.
+void nextSeries(SeriesCounter& c) {
+  if (c.next >= c.last) {
+    c.next = c.first;
+    show("All series done", "Counter reset");
+    delay(3000);
+  } else {
+    c.next++;
+  }
+}
+
+void resetCounters() { //Menu item: Reset Counters
+  precisionCount.next = precisionCount.first;
+  rapidCount.next = rapidCount.first;
+  s150Count.next = s150Count.first;
+  s20Count.next = s20Count.first;
+  s10Count.next = s10Count.first;
+  show("Series counters", "reset");
+  delay(2000);
+}
+
+/*  Face for faceTime. If stoppable, the LCD counts down the seconds left and
+ *  pressing Select ends the face early (Note 2 in the sequence documents).
+ */
+void faceWait(unsigned long faceTime, bool stoppable) {
+  if (!stoppable) {
+    delay(faceTime);
+    return;
+  }
+  unsigned long start = millis();
+  bool wasDown = !digitalRead(selectButton); //Ignore a press already held down
+  long shown = -1;
+  unsigned long elapsed;
+  while ((elapsed = millis() - start) < faceTime) {
+    long left = (faceTime - elapsed + 999) / 1000; //Seconds left, rounded up
+    if (left != shown) { //Update the countdown once a second
+      shown = left;
+      char line[17];
+      snprintf(line, sizeof(line), "Face %3ld SEL=End", left);
+      lcd.setCursor(0,1);
+      lcd.print(line);
+    }
+    bool down = !digitalRead(selectButton);
+    if (down && !wasDown) {
+      lcd.setCursor(0,1);
+      lcd.print("Stopped early   ");
+      return;
+    }
+    wasDown = down;
+    delay(20);
+  }
+}
+
 /*  A standard timed series, as in the sequence documents:
  *  Announce LOAD -> wait -> Announce ATTENTION + EDGE -> 7 secs -> FACE
  *  -> faceTime -> EDGE + Announce UNLOAD -> 7 secs -> FACE
+ *  The LCD shows which series this is, e.g. "Series 3/6".
  */
-void timedSeries(int loadTrack, const char* name, unsigned long faceTime) {
+void timedSeries(int loadTrack, const char* name, SeriesCounter& count,
+                 unsigned long faceTime, bool stoppable) {
+  char label[17];
+  seriesLabel(label, count);
+  char loadLine[17];
+  snprintf(loadLine, sizeof(loadLine), "%s Load", label);
+
   player.play(loadTrack);
-  show(name, "Load");
+  show(name, loadLine);
   delay(LOAD_WAIT);
   player.play(TRACK_ATTENTION);
   edge();
-  show(name, "Attention");
+  show(label, "Attention");
   delay(EDGE_TIME);
   face();
-  show(name, "Face");
-  delay(faceTime);
+  show(label, "Face");
+  faceWait(faceTime, stoppable);
   edge();
   player.play(TRACK_UNLOAD);
-  show(name, "Unload");
+  show(label, "Unload");
   delay(EDGE_TIME);
   face();
-  show(name, "Complete");
+  show(label, "Complete");
   delay(3000);
+  nextSeries(count);
 }
 
 /*  One exposure: EDGE -> 7 secs -> FACE for faceTime -> EDGE -> 7 secs -> FACE
@@ -461,23 +554,28 @@ void appearances(const char* name, int count, unsigned long faceTime, unsigned l
 
 void action1() { //Precision Stage
   digitalWrite(9, HIGH); // Turn LED 9 on
-  timedSeries(7, "Precision Stage", PRECISION_FACE);
+  timedSeries(7, "Precision Stage", precisionCount, PRECISION_FACE, true);
   digitalWrite(9, LOW); // Turn LED 9 off
 }
 
 void action2() { //Rapid Fire Stage
   digitalWrite(7, HIGH); // Turn the LED on
+  char label[17];
+  seriesLabel(label, rapidCount);
+  char loadLine[17];
+  snprintf(loadLine, sizeof(loadLine), "%s Load", label);
   player.play(8);
-  show(">Commencing", "Rapid Fire Stage");
+  show("Rapid Fire Stage", loadLine);
   delay(LOAD_WAIT);
   player.play(TRACK_ATTENTION);
 
   // 5 cycles of EDGE for 7 secs then FACE for 3 secs
   for (int cycle = 1; cycle <= 5; cycle++) {
     edge();
+    char line[17];
+    snprintf(line, sizeof(line), "%s Cyc %d", label, cycle); // e.g. "Series 3/6 Cyc 2"
     lcd.clear();
-    lcd.print(" Cycle ");
-    lcd.print(cycle);
+    lcd.print(line);
     lcd.setCursor(0,1);
     lcd.print("Edge for 7 Secs");
     delay(EDGE_TIME);
@@ -489,33 +587,33 @@ void action2() { //Rapid Fire Stage
 
   edge(); //EDGE and Unload together
   player.play(TRACK_UNLOAD);
-  show(" Unload ", "");
+  show(label, "Unload");
   delay(EDGE_TIME);
   face();
-  show("Rapid Fire Stage", "Complete");
+  show(label, "Complete");
   delay(3000);
+  nextSeries(rapidCount);
   returnToMenu();
   digitalWrite(7, LOW); // Turn the LED off
 }
 
 void action3() { //150 Seconds Series
   digitalWrite(6, HIGH); // Turn LED 6 on
-  timedSeries(5, "150s Sighter", SERIES_150_FACE);
-  timedSeries(5, "150s Series 1", SERIES_150_FACE);
+  timedSeries(5, "150 Sec Series", s150Count, SERIES_150_FACE, true);
   returnToMenu();
   digitalWrite(6, LOW); // Turn the LED OFF
 }
 
 void action4() { //20 Seconds Series
   digitalWrite(8, HIGH); // Turn the Corresponding LED on
-  timedSeries(4, "20 Sec Series", SERIES_20_FACE);
+  timedSeries(4, "20 Sec Series", s20Count, SERIES_20_FACE, false);
   returnToMenu();
   digitalWrite(8, LOW); // Turn the Corresponding LED off
 }
 
 void action5() { //10 Seconds series
   digitalWrite(4, HIGH); // Turn the LED on
-  timedSeries(3, "10 Sec Series", SERIES_10_FACE);
+  timedSeries(3, "10 Sec Series", s10Count, SERIES_10_FACE, false);
   returnToMenu();
   digitalWrite(4, LOW); // Turn the Corresponding LED off
 }
